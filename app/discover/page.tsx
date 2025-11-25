@@ -16,6 +16,7 @@ export default function DiscoverPage() {
   const [popularBooks, setPopularBooks] = useState<Book[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string>('');
+  const [isNewUser, setIsNewUser] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -30,13 +31,32 @@ export default function DiscoverPage() {
 
         setCurrentUserId(userId);
 
-        const [hybrid, popular] = await Promise.all([
-          apiService.getHybridRecommendations(userId),
-          apiService.getPopularBooks()
-        ]);
+        // List of new user IDs - show them top 10 popular books only
+        const newUserIds = ['999001', '999002', '999003', '999004', '999005'];
+        const isNew = newUserIds.includes(userId);
+        setIsNewUser(isNew);
 
-        setHybridBooks(hybrid);
-        setPopularBooks(popular);
+        let hybrid: Book[] = [];
+        const popular = await apiService.getPopularBooks();
+
+        // Only fetch hybrid recommendations if NOT a new user
+        if (!isNew) {
+          try {
+            hybrid = await apiService.getHybridRecommendations(userId);
+          } catch (error) {
+            console.warn('Failed to fetch hybrid recommendations:', error);
+            hybrid = [];
+          }
+        }
+
+        // If user is new or no hybrid recommendations, use top 10 popular
+        if (isNew || !hybrid || hybrid.length === 0) {
+          setHybridBooks(popular.slice(0, 10)); // Top 10 popular for new users
+          setPopularBooks(popular);
+        } else {
+          setHybridBooks(hybrid);
+          setPopularBooks(popular);
+        }
       } catch (error) {
         console.error('Error fetching data:', error);
         setError('Không thể tải dữ liệu. Vui lòng thử lại sau.');
@@ -65,6 +85,32 @@ export default function DiscoverPage() {
 
     fetchData();
   }, [router]);
+
+  // Merge hybrid recommendations with popular books to ensure we show ~10 items.
+  // Keep hybrid order first, then append popular books that aren't already included.
+  const mergedRecommendations = (() => {
+    const maxItems = 10;
+    const result: Book[] = [];
+    const seen = new Set<string>();
+
+    for (const b of hybridBooks) {
+      if (b && b.ISBN && !seen.has(b.ISBN) && b['Book-Title']) {
+        result.push(b);
+        seen.add(b.ISBN);
+        if (result.length >= maxItems) return result;
+      }
+    }
+
+    for (const b of popularBooks) {
+      if (b && b.ISBN && !seen.has(b.ISBN) && b['Book-Title']) {
+        result.push(b);
+        seen.add(b.ISBN);
+        if (result.length >= maxItems) break;
+      }
+    }
+
+    return result;
+  })();
 
   const handleBackToHome = () => {
     router.push('/');
@@ -121,47 +167,51 @@ export default function DiscoverPage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Star className="w-5 h-5 text-yellow-500" />
-                  <span>Gợi ý cho bạn</span>
-                </CardTitle>
-                <CardDescription>
-                  Những cuốn sách được cá nhân hóa dựa trên sở thích đọc của bạn
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {isLoading ? (
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                    {[...Array(8)].map((_, index) => (
-                      <div key={index} className="space-y-3">
-                        <Skeleton className="w-40 h-60 mx-auto" />
-                        <Skeleton className="h-4 w-32 mx-auto" />
-                        <Skeleton className="h-3 w-24 mx-auto" />
-                      </div>
-                    ))}
-                  </div>
-                ) : hybridBooks.length > 0 ? (
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    {hybridBooks.map((book) => (
-                      <BookCard key={book.ISBN} book={book} size="medium" />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-12">
-                    <BookOpen className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-500 dark:text-gray-400">
-                      Chưa có gợi ý nào cho bạn. Hãy khám phá sách phổ biến bên cạnh!
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+          {/* Show recommendations section only for existing users */}
+          {!isNewUser && (
+            <div className="lg:col-span-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <Star className="w-5 h-5 text-yellow-500" />
+                    <span>Gợi ý cho bạn</span>
+                  </CardTitle>
+                  <CardDescription>
+                    Những cuốn sách được cá nhân hóa dựa trên sở thích đọc của bạn
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-8">
+                  {isLoading ? (
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                      {[...Array(8)].map((_, index) => (
+                        <div key={index} className="space-y-3">
+                          <Skeleton className="w-40 h-60 mx-auto" />
+                          <Skeleton className="h-4 w-32 mx-auto" />
+                          <Skeleton className="h-3 w-24 mx-auto" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : mergedRecommendations.length > 0 ? (
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                      {mergedRecommendations.map((book) => (
+                        <BookCard key={book.ISBN} book={book} size="medium" />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-12">
+                      <BookOpen className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                      <p className="text-gray-500 dark:text-gray-400">
+                        Chưa có gợi ý nào cho bạn. Hãy khám phá sách phổ biến bên cạnh!
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
 
-          <div className="lg:col-span-1">
+          {/* Show full-width popular books for new users */}
+          <div className={isNewUser ? "lg:col-span-3" : "lg:col-span-1"}>
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2">

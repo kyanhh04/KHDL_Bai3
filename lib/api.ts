@@ -1,6 +1,18 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://127.0.0.1:5000';
+// Use a public env var for client-side configuration. If not provided,
+// client code will call relative `/api/...` paths so Next can proxy or
+// serve API routes locally. Set `NEXT_PUBLIC_API_BASE_URL` in `.env.local`
+// to point to your backend (e.g. http://127.0.0.1:5000).
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
+
+const buildUrl = (path: string) => {
+  // If API_BASE_URL is empty, return the relative path so the browser
+  // requests the same origin (e.g. Next.js API routes). Otherwise
+  // prefix with the configured base URL.
+  if (!API_BASE_URL || API_BASE_URL === '') return path;
+  return `${API_BASE_URL}${path.startsWith('/') ? '' : '/'}${path}`;
+};
 
 export interface Book {
   ISBN: string;
@@ -14,7 +26,7 @@ export interface Book {
 export const apiService = {
   async getActiveUsers(): Promise<string[]> {
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/users/active`);
+      const response = await axios.get(buildUrl('/api/users/active'));
       return response.data;
     } catch (error) {
       console.error('Error fetching active users:', error);
@@ -24,7 +36,7 @@ export const apiService = {
 
   async getHybridRecommendations(userId: string): Promise<Book[]> {
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/recommend/hybrid/${userId}`);
+      const response = await axios.get(buildUrl(`/api/recommend/hybrid/${userId}`));
       return response.data;
     } catch (error) {
       console.error('Error fetching hybrid recommendations:', error);
@@ -34,7 +46,7 @@ export const apiService = {
 
   async getPopularBooks(): Promise<Book[]> {
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/recommend/popular`);
+      const response = await axios.get(buildUrl('/api/recommend/popular'));
       return response.data;
     } catch (error) {
       console.error('Error fetching popular books:', error);
@@ -44,10 +56,20 @@ export const apiService = {
 
   async getContentRecommendations(isbn: string): Promise<Book[]> {
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/recommend/content/${isbn}`);
+      const response = await axios.get(buildUrl(`/api/recommend/content/${isbn}`));
       return response.data;
     } catch (error) {
       console.error('Error fetching content recommendations:', error);
+      throw error;
+    }
+  },
+
+  async getBookByISBN(isbn: string): Promise<Book> {
+    try {
+      const response = await axios.get(buildUrl(`/api/book/${isbn}`));
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching book by ISBN:', error);
       throw error;
     }
   }

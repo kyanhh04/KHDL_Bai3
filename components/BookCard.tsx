@@ -32,9 +32,19 @@ export function BookCard({ book, size = 'medium' }: BookCardProps) {
           <div className="flex flex-col items-center space-y-3">
             {/* Book Cover */}
             <div className={`${sizeClasses[size]} relative flex-shrink-0`}>
-              {imgError ? (
-                <div className="w-full h-full bg-gray-200 dark:bg-gray-700 rounded-md flex items-center justify-center">
-                  <span className="text-gray-500 dark:text-gray-400 text-xs text-center px-2">No Cover</span>
+              {imgError || !book['Image-URL-M'] ? (
+                <div className="w-full h-full bg-gradient-to-br from-blue-400 to-blue-600 dark:from-blue-600 dark:to-blue-800 rounded-md flex items-center justify-center">
+                  <div className="text-center">
+                    <p className="text-white font-bold text-2xl">
+                      {book['Book-Title']
+                        .split(' ')
+                        .slice(0, 2)
+                        .map((word) => word.charAt(0))
+                        .join('')
+                        .toUpperCase()}
+                    </p>
+                    <p className="text-white text-xs mt-2 px-2 line-clamp-2">{book['Book-Title']}</p>
+                  </div>
                 </div>
               ) : (
                 <img

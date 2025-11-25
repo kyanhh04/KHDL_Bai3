@@ -16,41 +16,72 @@ export default function BookDetailPage() {
     const [similarBooks, setSimilarBooks] = useState<Book[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string>('');
+    const [imgError, setImgError] = useState(false);
     const router = useRouter();
     const params = useParams();
     const isbn = params.isbn as string;
 
     useEffect(() => {
         const fetchBookData = async () => {
-            if (!isbn) {
+            if (!isbn || isbn === 'undefined') {
                 setError('Không tìm thấy mã ISBN');
                 setIsLoading(false);
                 return;
             }
 
             try {
-                const books = await apiService.getContentRecommendations(isbn);
+                // Try multiple sources to find the book with image
+                let bookData: Book | null = null;
 
-                if (books.length === 0) {
+                // 1. First try popular books
+                try {
+                    const popularBooks = await apiService.getPopularBooks();
+                    if (Array.isArray(popularBooks)) {
+                        bookData = popularBooks.find(b => b.ISBN === isbn) || null;
+                    }
+                } catch (e) {
+                    console.warn('Popular books fetch failed:', e);
+                }
+
+                // 2. If not found in popular, try content recommendations
+                if (!bookData) {
+                    try {
+                        const contentBooks = await apiService.getContentRecommendations(isbn);
+                        if (Array.isArray(contentBooks) && contentBooks.length > 0) {
+                            bookData = contentBooks[0];
+                        }
+                    } catch (e) {
+                        console.warn('Content recommendations fetch failed:', e);
+                    }
+                }
+
+                if (!bookData) {
                     setError('Không tìm thấy thông tin sách');
+                    setIsLoading(false);
                     return;
                 }
 
-                setCurrentBook(books[0]);
-                setSimilarBooks(books.slice(1));
+                setCurrentBook(bookData);
+                
+                // Try to get similar books from content recommendations
+                try {
+                    const similarBooksData = await apiService.getContentRecommendations(isbn);
+                    if (Array.isArray(similarBooksData) && similarBooksData.length > 0) {
+                        setSimilarBooks(similarBooksData.slice(0, 6));
+                    } else {
+                        // Fallback: get popular books
+                        const popularBooks = await apiService.getPopularBooks();
+                        if (Array.isArray(popularBooks)) {
+                            setSimilarBooks(popularBooks.filter(b => b.ISBN !== isbn).slice(0, 6));
+                        }
+                    }
+                } catch (err) {
+                    console.warn('Could not fetch similar books:', err);
+                    setSimilarBooks([]);
+                }
             } catch (error) {
                 console.error('Error fetching book data:', error);
                 setError('Không thể tải thông tin sách. Vui lòng thử lại sau.');
-
-                const fallbackBook: Book = {
-                    ISBN: isbn,
-                    "Book-Title": "The Hobbit : or There and Back Again",
-                    "Book-Author": "J.R.R. Tolkien",
-                    "Year-Of-Publication": 2002,
-                    "Publisher": "Houghton Mifflin",
-                    "Image-URL-M": "http://images.amazon.com/images/P/034545104X.01.MZZZZZZZ.jpg"
-                };
-                setCurrentBook(fallbackBook);
                 setSimilarBooks([]);
             } finally {
                 setIsLoading(false);
@@ -168,18 +199,28 @@ export default function BookDetailPage() {
                             <CardContent className="p-6">
                                 <div className="flex flex-col md:flex-row gap-6">
                                     <div className="flex-shrink-0">
-                                        <div className="w-48 h-72 relative mx-auto md:mx-0">
-                                            <Image
-                                                src={currentBook['Image-URL-M']}
-                                                alt={currentBook['Book-Title']}
-                                                fill
-                                                className="object-cover rounded-lg shadow-lg"
-                                                sizes="(max-width: 768px) 100vw, 192px"
-                                                onError={(e) => {
-                                                    const target = e.target as HTMLImageElement;
-                                                    target.src = `https://via.placeholder.com/192x288/cccccc/666666?text=No+Cover`;
-                                                }}
-                                            />
+                                        <div className="w-48 h-72 mx-auto md:mx-0 bg-gradient-to-br from-blue-300 to-blue-500 rounded-lg shadow-lg flex items-center justify-center overflow-hidden relative">
+                                            {currentBook['Image-URL-M'] && !imgError ? (
+                                                <img
+                                                    src={currentBook['Image-URL-M']}
+                                                    alt={currentBook['Book-Title']}
+                                                    className="w-full h-full object-cover rounded-lg"
+                                                    onLoad={() => setImgError(false)}
+                                                    onError={() => setImgError(true)}
+                                                />
+                                            ) : (
+                                                <div className="text-center text-white">
+                                                    <p className="text-3xl font-bold">
+                                                        {currentBook['Book-Title']
+                                                            .split(' ')
+                                                            .slice(0, 2)
+                                                            .map((word) => word.charAt(0))
+                                                            .join('')
+                                                            .toUpperCase()}
+                                                    </p>
+                                                    <p className="text-sm mt-2 px-3 line-clamp-2">{currentBook['Book-Title']}</p>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
 
